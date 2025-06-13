@@ -4,14 +4,24 @@ import { Play, Pause, RotateCcw, Trophy } from 'lucide-react';
 // Game constants
 const CONFIG = {
   CANVAS_W: 800, CANVAS_H: 600, WORLD_W: 1600, WORLD_H: 1200,
-  SNAKE_SPEED: 2, BOOST_SPEED: 4, TURN_SPEED: 0.1, SEGMENT_SIZE: 10,
-  MIN_TURN_RADIUS:2, MAX_TURN_RADIUS: 15, // New turning constraints
+  SNAKE_SPEED: 2, BOOST_SPEED: 4, TURN_SPEED: 0.1, 
+  
+  // NEW: Centralized growth parameters for easy tuning
+  MIN_SNAKE_WIDTH: 10, 
+  MAX_SNAKE_WIDTH: 35, 
+  SCORE_FOR_MAX_WIDTH: 2000, // Score needed to reach max width. Higher = slower width growth.
+
+  MIN_SNAKE_LENGTH: 10,
+  MAX_SNAKE_LENGTH: 100,
+  SCORE_FOR_MAX_LENGTH: 2000, // Score needed to reach max length. Higher = slower length growth.
+
+  MIN_TURN_RADIUS:2, MAX_TURN_RADIUS: 15,
   FOOD_COUNT: 150, AI_COUNT: 5, COLORS: {
-    BG: '#000000', GRID: '#87CEFA', // Changed to pure black
+    BG: '#000000', GRID: '#87CEFA',
     PLAYER: ['#00ff88', '#00dd77', '#00bb66'],
     AI: ['#ff4444', '#4444ff', '#ffaa00', '#ff44ff', '#44ffff'],
     FOOD: ['#ffff00', '#ff8800', '#ff0088', '#8800ff'],
-    POWER_FOOD: '#ff0000', // New power food
+    POWER_FOOD: '#ff0000',
   }
 };
 
@@ -31,19 +41,10 @@ class GameObject {
 }
 
 class Food extends GameObject {
-  /**
-   * Creates a new Food object.
-   * @param {number} x - The x-coordinate.
-   * @param {number} y - The y-coordinate.
-   * @param {string} [type='normal'] - The type of food ('normal' or 'power').
-   * @param {string|null} [color=null] - An optional specific color for the food. If null, a random color is chosen.
-   */
   constructor(x, y, type = 'normal', color = null) {
     super(x, y);
     this.type = type;
     this.size = type === 'power' ? 8 : 3 + Math.random() * 2;
-    // MODIFIED: Use the provided color, or fall back to the default color logic.
-    // This allows creating food from dead snakes with the snake's color.
     this.color = color || (type === 'power' ? CONFIG.COLORS.POWER_FOOD : 
       CONFIG.COLORS.FOOD[Math.floor(Math.random() * CONFIG.COLORS.FOOD.length)]);
     this.value = type === 'power' ? 5 : 1;
@@ -83,7 +84,7 @@ class Snake extends GameObject {
     this.angle = Math.random() * Math.PI * 2;
     this.targetAngle = this.angle;
     this.speed = CONFIG.SNAKE_SPEED;
-    this.length = 5;
+    // REMOVED: `this.length` is no longer a stored property. It's calculated dynamically.
     this.score = 0;
     this.isPlayer = isPlayer;
     this.isAlive = true;
@@ -96,14 +97,34 @@ class Snake extends GameObject {
     this.aiTarget = null;
     this.aiTimer = 0;
     
-    for (let i = 1; i < this.length; i++) {
+    // MODIFIED: Initialize with the minimum number of segments from CONFIG.
+    for (let i = 1; i < CONFIG.MIN_SNAKE_LENGTH; i++) {
+      const prev = this.segments[i-1];
+      const desiredDist = this.getWidth() * 0.7;
       this.segments.push({
-        x: x - Math.cos(this.angle) * CONFIG.SEGMENT_SIZE * i,
-        y: y - Math.sin(this.angle) * CONFIG.SEGMENT_SIZE * i,
+        x: prev.x - Math.cos(this.angle) * desiredDist,
+        y: prev.y - Math.sin(this.angle) * desiredDist,
         angle: this.angle
       });
     }
   }
+  
+  /**
+   * UPDATED: Calculates the snake's width based on score. Tunable via CONFIG.
+   */
+  getWidth() {
+    const growthProgress = Math.min(1, Math.sqrt(this.score / CONFIG.SCORE_FOR_MAX_WIDTH));
+    return lerp(CONFIG.MIN_SNAKE_WIDTH, CONFIG.MAX_SNAKE_WIDTH, growthProgress);
+  }
+  
+  /**
+   * NEW: Calculates the snake's target length based on score. Tunable via CONFIG.
+   */
+  getLength() {
+    const growthProgress = Math.min(1, Math.sqrt(this.score / CONFIG.SCORE_FOR_MAX_LENGTH));
+    // Use Math.floor to ensure the result is an integer for the segment count.
+    return Math.floor(lerp(CONFIG.MIN_SNAKE_LENGTH, CONFIG.MAX_SNAKE_LENGTH, growthProgress));
+  }
 
   update(dt, gameState) {
     if (!this.isAlive) return;
@@ -114,8 +135,9 @@ class Snake extends GameObject {
     
     if (!this.isPlayer) this.updateAI(gameState);
     
+    // MODIFIED: Turn radius now based on the actual number of segments.
     const sizeBasedTurnLimit = lerp(CONFIG.MIN_TURN_RADIUS, CONFIG.MAX_TURN_RADIUS, 
-      Math.min(1, this.length / 50));
+      Math.min(1, this.segments.length / 50));
     
     let angleDiff = this.targetAngle - this.angle;
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
@@ -143,27 +165,30 @@ class Snake extends GameObject {
       });
     }
     
-    // Update segments (follow-the-leader)
+    // Segment following logic now based on dynamic width for a solid appearance.
     for (let i = 1; i < this.segments.length; i++) {
       const curr = this.segments[i];
       const prev = this.segments[i-1];
       const d = dist(curr.x, curr.y, prev.x, prev.y);
+      
+      const desiredDist = this.getWidth() * 0.7;
       
-      if (d > CONFIG.SEGMENT_SIZE) {
+      if (d > desiredDist) {
         const moveAngle = angle(curr.x, curr.y, prev.x, prev.y);
-        const moveDist = d - CONFIG.SEGMENT_SIZE;
+        const moveDist = d - desiredDist;
         curr.x += Math.cos(moveAngle) * moveDist;
         curr.y += Math.sin(moveAngle) * moveDist;
         curr.angle = moveAngle;
       }
     }
     
-    // Add segments if grown
-    while (this.segments.length < this.length) {
+    // MODIFIED: Continuously add segments if the current count is less than the calculated target length.
+    while (this.segments.length < this.getLength()) {
       const last = this.segments[this.segments.length - 1];
+      const desiredDist = this.getWidth() * 0.7;
       this.segments.push({
-        x: last.x - Math.cos(last.angle) * CONFIG.SEGMENT_SIZE,
-        y: last.y - Math.sin(last.angle) * CONFIG.SEGMENT_SIZE,
+        x: last.x - Math.cos(last.angle) * desiredDist,
+        y: last.y - Math.sin(last.angle) * desiredDist,
         angle: last.angle
       });
     }
@@ -175,8 +200,6 @@ class Snake extends GameObject {
       this.boost += 0.2 * dt;
     }
     this.boost = clamp(this.boost, 0, 100);
-    
-    // MODIFIED: Wall collision is now handled by the GameEngine to centralize death logic.
   }
   
   updateAI(gameState) {
@@ -207,14 +230,19 @@ class Snake extends GameObject {
   checkCollision(other) {
     if (!this.isAlive || !other.isAlive || this.id === other.id || this.invulnerable > 0) return false;
     const head = this.segments[0];
-    // Check for collision with the other snake's body segments
-    return other.segments.slice(1).some(seg => 
-      dist(head.x, head.y, seg.x, seg.y) < CONFIG.SEGMENT_SIZE * 0.8
-    );
+    const headRadius = this.getWidth() / 2;
+
+    return other.segments.slice(1).some(seg => {
+      const segRadius = other.getWidth() / 2;
+      return dist(head.x, head.y, seg.x, seg.y) < headRadius + segRadius;
+    });
   }
   
+  /**
+   * UPDATED: Growth is now decoupled. Eating food only increases the score.
+   * The actual growth of length and width is handled by the getLength() and getWidth() methods.
+   */
   grow(amount = 1) {
-    this.length += amount;
     this.score += amount;
   }
   
@@ -240,7 +268,10 @@ class Snake extends GameObject {
   checkFood(food) {
     if (!this.isAlive) return false;
     const head = this.segments[0];
-    const maxDist = CONFIG.SEGMENT_SIZE * (1.0 + this.segments.length * 0.01);
+
+    const headRadius = this.getWidth() / 2;
+    const foodRadius = food.getSize();
+    const maxDist = headRadius + foodRadius;
     const dx = food.x - head.x;
     const dy = food.y - head.y;
     const distSq = dx * dx + dy * dy;
@@ -301,91 +332,69 @@ class GameEngine {
     }
   }
   
-  /**
-   * MODIFIED: The entire update loop is restructured for clarity and correctness.
-   * 1. All snakes are moved.
-   * 2. Collisions (wall and snake-on-snake) are detected, and snakes are marked as dead.
-   * 3. Food is dropped from the snakes that just died.
-   * 4. Food consumption is processed for all living snakes.
-   * 5. The camera and AI respawning are handled.
-   */
   update() {
     if (!this.running) return;
     
     const dt = 1;
     
-    // 1. Update all snake positions and AI logic
     this.snakes.forEach(snake => snake.update(dt, {snakes: this.snakes, food: this.food}));
     
-    // --- Collision, Death, and Food Drop Logic ---
     const newlyDeadSnakes = [];
 
-    // 2. Check for collisions (walls and other snakes) for all living snakes
     this.snakes.forEach(snake => {
-      if (!snake.isAlive) return; // Skip snakes that are already dead
+      if (!snake.isAlive) return;
 
       const head = snake.segments[0];
 
-      // Check for wall collisions
       if (head.x < 0 || head.x > CONFIG.WORLD_W || head.y < 0 || head.y > CONFIG.WORLD_H) {
         snake.die();
         newlyDeadSnakes.push(snake);
-        return; // Move to the next snake
+        return;
       }
 
-      // Check for snake-on-snake collisions
       for (const other of this.snakes) {
         if (snake.checkCollision(other)) {
           snake.die();
           newlyDeadSnakes.push(snake);
-          return; // Collision found, move to the next snake
+          return;
         }
       }
     });
 
-    // 3. NEW: Drop food from the snakes that just died
     newlyDeadSnakes.forEach(deadSnake => {
-      // Drop one food item for every 3 segments to prevent overwhelming the map
       deadSnake.segments.forEach((segment, index) => {
         if (index % 3 === 0) {
-          // Use one of the snake's body colors for the dropped food
           const foodColor = deadSnake.colors[index % deadSnake.colors.length];
           this.food.push(new Food(segment.x, segment.y, 'normal', foodColor));
         }
       });
     });
       
-    // 4. Process food consumption for all living snakes
     this.snakes.forEach(snake => {
-      if (!snake.isAlive) return; // Only living snakes can eat
+      if (!snake.isAlive) return; 
       
-      // Iterate backwards to safely remove items while looping
       for (let i = this.food.length - 1; i >= 0; i--) {
         const food = this.food[i];
         if (snake.checkFood(food)) {
+          // The grow method now only passes the food's value to increase the score.
+          snake.grow(food.value); 
           if (food.type === 'power') {
-            snake.grow(food.value);
             const powers = ['invulnerable', 'magnetism', 'speed'];
             snake.activatePower(powers[Math.floor(Math.random() * powers.length)]);
-            // Replace the eaten power food
             this.food.splice(i, 1, new Food(
               Math.random() * CONFIG.WORLD_W, 
               Math.random() * CONFIG.WORLD_H,
               Math.random() < 0.2 ? 'power' : 'normal'
             ));
           } else {
-            snake.grow(food.value);
-            // Replace the eaten normal food
             this.food.splice(i, 1, new Food(Math.random() * CONFIG.WORLD_W, Math.random() * CONFIG.WORLD_H));
           }
         }
       }
     });
     
-    // 5. Update food animations
     this.food.forEach(food => food.update());
     
-    // 6. Update camera if player is alive
     if (this.player.isAlive) {
       const head = this.player.segments[0];
       this.camera.x = lerp(this.camera.x, head.x - CONFIG.CANVAS_W/2, 0.1);
@@ -393,7 +402,6 @@ class GameEngine {
       this.score = this.player.score;
     }
     
-    // 7. Respawn AI snakes if count drops
     const aliveAI = this.snakes.filter(s => !s.isPlayer && s.isAlive).length;
     if (aliveAI < CONFIG.AI_COUNT) {
       this.snakes.push(new Snake(Math.random() * CONFIG.WORLD_W, Math.random() * CONFIG.WORLD_H));
@@ -454,12 +462,13 @@ class GameEngine {
     this.snakes.forEach(snake => {
       if (!snake.isAlive) return;
 
+      const width = snake.getWidth();
       snake.segments.forEach((segment, i) => {
         const x = segment.x - this.camera.x;
         const y = segment.y - this.camera.y;
 
-        if (x > -20 && x < CONFIG.CANVAS_W + 20 && y > -20 && y < CONFIG.CANVAS_H + 20) {
-          const size = i === 0 ? CONFIG.SEGMENT_SIZE * 1.2 : CONFIG.SEGMENT_SIZE;
+        if (x > -width && x < CONFIG.CANVAS_W + width && y > -width && y < CONFIG.CANVAS_H + width) {
+          const radius = (i === 0 ? width * 1.2 : width) / 2;
           const colorIndex = Math.min(i, snake.colors.length - 1);
 
           if (snake.invulnerable > 0) {
@@ -473,7 +482,7 @@ class GameEngine {
 
           ctx.fillStyle = snake.colors[colorIndex];
           ctx.beginPath();
-          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.shadowBlur = 0;
@@ -481,13 +490,13 @@ class GameEngine {
 
           if (i === 0) {
             ctx.fillStyle = '#fff';
-            const eyeOffset = size * 0.4;
-            const eyeSize = size * 0.2;
+            const eyeRadius = radius * 0.2;
+            const eyeOffset = radius * 0.5;
             ctx.beginPath();
             ctx.arc(x + Math.cos(segment.angle - 0.5) * eyeOffset,
-                    y + Math.sin(segment.angle - 0.5) * eyeOffset, eyeSize, 0, Math.PI * 2);
+                    y + Math.sin(segment.angle - 0.5) * eyeOffset, eyeRadius, 0, Math.PI * 2);
             ctx.arc(x + Math.cos(segment.angle + 0.5) * eyeOffset,
-                    y + Math.sin(segment.angle + 0.5) * eyeOffset, eyeSize, 0, Math.PI * 2);
+                    y + Math.sin(segment.angle + 0.5) * eyeOffset, eyeRadius, 0, Math.PI * 2);
             ctx.fill();
           }
         }
