@@ -1,0 +1,49 @@
+I have developed a custom version of slither.io using Node.js and React. The game is functional but there are several Improvements I would like to make. I can also show you any parts of it, the structure/names of classes, or anything else you would like to see for you to understand how to correctly add the features.
+
+
+The features I would like to add, ONE AT A TIME, are listed in the order of which to do them (as well as general performance considerations):
+
+## Additional Suggested Improvements and Key Systems to Modify in order of priority
+
+1. The current window size appears only over one side of the web browser. I would like to update this so the canvas and corresponding supplementary text and formatting covers the browser size in a way that looks good.
+
+2. Mini-map - Small overview of the entire game world
+
+3. - **Add Effects**: Shadow, glow when snake is boosting, particles
+
+4. Improve AI gameplay - Get creative and aim to improve the AI experience so that they are more interactive and fun to play with
+
+Suggestions include: - **Current Logic**: Avoid snakes → Seek food → Random movement
+
+- **Modify**: Change priority logic, add new behaviors
+
+5. Change the grid colour to a different colour than the background (currently both black)
+
+## Performance Considerations
+
+- **Culling**: Only render objects within camera view
+
+- **Object Pooling**: Reuse food objects instead of creating new ones
+
+- **Update Frequency**: 60fps game loop with delta time 
+
+
+Later//
+
+Improve turning radius,
+
+enforce always moving snake (turning mouse quickly stops this)
+
+Add snake names
+
+Option to conitnue game when died (same AI's)
+
+Additional information on powerups on the start screen, make the powerups more visual and obvious what is happening
+
+
+
+Done//
+
+1. **GameEngine**: Update collision handling so that when a snake dies, its mass is dropped as food on the map to collect
+
+2. Update the code so that when the snake grows, it gets wider and longer in some reasonable proportion to its mass, instead of just getting longer
