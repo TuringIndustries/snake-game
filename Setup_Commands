@@ -1,0 +1,41 @@
+npm install
+npm install lucide-react
+npm install tailwindcss @tailwindcss/vite
+
+
+Add
+src/input.css > "@import "tailwindcss";"
+
+src/main.tsx > 
+"
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './output.css';  // import the generated Tailwind CSS
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+"
+
+package.json (in/under "scripts") > " "tailwind:watch": "npx @tailwindcss/cli -i ./src/input.css -o ./src/output.css --watch" "
+
+
+
+vite.config.js > "
+// vite.config.ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite' // <--- Add this import
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(), // <--- Add this plugin call
+  ],
+})
+
+"
